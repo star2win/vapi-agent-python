@@ -1,0 +1,9 @@
+vapi_server_sdk>=0.8.1
+python-dotenv>=1.0.1
+fastapi>=0.110.0
+uvicorn>=0.27.1
+pydantic>=2.6.3
+typing-extensions>=4.10.0
+starlette>=0.36.3
+loguru>=0.7.2
+pyngrok>=7.1.5
