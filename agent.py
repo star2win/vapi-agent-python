@@ -95,11 +95,17 @@ ASSISTANT_CONFIG = {
         "messages": [
             {
                 "role": "system",
-                "content": "You are a friendly Q&A assistant. Your role is to answer questions helpfully and conversationally. Keep your responses concise but informative. If you don't know something, be honest about it. Always maintain a warm and professional tone."
+                "content": """You are a friendly Q&A assistant.
+                The caller is calling from {{caller_number}}.
+                At the start of every call, greet them by saying 'Thank you for calling from {{caller_number}}' before proceeding to help them.
+                Your role is to answer questions helpfully and conversationally.
+                Keep your responses concise but informative.
+                If you don't know something, be honest about it.
+                Always maintain a warm and professional tone."""
             },
             {
                 "role": "assistant",
-                "content": "Hello, how may I help you?"
+                "content": "Thank you for calling from {{caller_number}}. How may I help you?"
             }
         ],
     },
@@ -113,7 +119,7 @@ ASSISTANT_CONFIG = {
         "caching_enabled": True,
     },
 
-    "first_message": "Hello! How can I help you today?",
+    "first_message": "Thank you for calling from {{caller_number}}. How may I help you?",
     "first_message_interruptions_enabled": True,
     "first_message_mode": "assistant-speaks-first",
 
@@ -182,7 +188,11 @@ class VapiAssistantManager:
                 self.vapi.phone_numbers.update(
                     id=phone_number_id,
                     request={
-                        "assistant_id": self.assistant_id
+                        "assistant_id": None,
+                        "squad_id": None,
+                        "server": {
+                            "url": f"{SERVER_URL}/webhooks/vapi"
+                        }
                     }
                 )
                 logger.info(f"Assigned assistant {self.assistant_id} to phone number {phone_number_id}")
@@ -411,6 +421,35 @@ async def vapi_webhook_handler(request: Request):
              logger.info(f"Handling user-interrupted event for Call ID: {call_id}")
              # Process user interrupted event
              return {"success": True, "message": "User interrupted event received"}
+
+        # Add handler for assistant-request event
+        elif event_type == "assistant-request":
+            logger.info(f"Handling assistant-request event for Call ID: {call_id}")
+            try:
+                # Extract caller's phone number
+                caller_number = data.get("message", {}).get("call", {}).get("customer", {}).get("number")
+                logger.info(f"Caller number for assistant-request: {caller_number}")
+
+                if not caller_number:
+                    logger.error("Caller number not found in assistant-request payload.")
+                    # Return an error response that Vapi will speak to the caller
+                    return JSONResponse(content={"error": "Unable to get caller information."})
+
+                # OPTION 1: Return existing assistant ID with overrides
+                logger.debug(f"Returning assistantId {assistant_manager.assistant_id} with overrides for Call ID: {call_id}")
+                return JSONResponse(content={
+                    "assistantId": assistant_manager.assistant_id,  # Use your created assistant
+                    "assistantOverrides": {
+                        "variableValues": {
+                            "caller_number": caller_number # Provide the caller number for substitution
+                        }
+                    }
+                })
+
+            except Exception as e:
+                logger.error(f"Error handling assistant-request event: {str(e)}")
+                # Return an error response that Vapi will speak to the caller
+                return JSONResponse(content={"error": "An error occurred while setting up the assistant."})
 
         # If the event type is not handled, log a warning and return a success response
         logger.warning(f"Received unhandled Vapi webhook event type: {event_type}" + (f", Call ID: {call_id}" if call_id else ""))
