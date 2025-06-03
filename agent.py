@@ -347,8 +347,17 @@ async def vapi_webhook_handler(request: Request):
         data = await request.json()
         event_type = data.get("message", {}).get("type")
         call_id = data.get("message", {}).get("call", {}).get("id") # Attempt to get call_id for logging
+        
+        # Extract from_number and to_number from the call object
+        call_data = data.get("message", {}).get("call", {})
+        from_number = call_data.get("customer", {}).get("number")
+        to_number = call_data.get("phoneNumber", {}).get("number")
 
         logger.info(f"Received Vapi webhook event: {event_type}" + (f", Call ID: {call_id}" if call_id else ""))
+        if from_number:
+            logger.info(f"  From: {from_number}")
+        if to_number:
+            logger.info(f"  To: {to_number}")
 
         # Dispatch based on event type
         if event_type == "function-call":
@@ -413,58 +422,7 @@ async def vapi_webhook_handler(request: Request):
         return JSONResponse(status_code=500, content={"error": str(e)}) # Vapi might expect 2xx response even on handler error, verify this.
 
 
-@app.post("/webhooks/twilio/voice")
-async def twilio_voice_webhook(request: Request):
-    """
-    Webhook endpoint for Twilio voice calls
-    This is the webhook URL you'll configure in Twilio
-    
-    When a call comes in, this endpoint will:
-    1. Receive the call from Twilio
-    2. Connect it to your Vapi assistant
-    """
-    try:
-        # Parse form data from Twilio
-        form_data = await request.form()
-        call_sid = form_data.get("CallSid")
-        from_number = form_data.get("From")
-        to_number = form_data.get("To")
-        
-        logger.info(f"Incoming call - SID: {call_sid}, From: {from_number}, To: {to_number}")
-        
-        # Get the assistant ID (use the default one created on startup)
-        if not assistant_manager.assistant_id:
-            # Create one if it doesn't exist
-            assistant = assistant_manager.create_assistant()
-            assistant_id = assistant.id
-        else:
-            assistant_id = assistant_manager.assistant_id
-        
-        # Generate TwiML response to connect to Vapi
-        # Replace YOUR_VAPI_PHONE_NUMBER with your Vapi SIP endpoint
-        twiml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Connect>
-        <Stream url="wss://api.vapi.ai/ws?assistantId={assistant_id}" />
-    </Connect>
-</Response>"""
-        
-        logger.info(f"Connecting call {call_sid} to assistant {assistant_id}")
-        
-        return Response(content=twiml_response, media_type="text/xml")
-        
-    except Exception as e:
-        logger.error(f"Error handling Twilio webhook: {str(e)}")
-        # Return error TwiML
-        error_twiml = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>Sorry, we're experiencing technical difficulties. Please try again later.</Say>
-    <Hangup/>
-</Response>"""
-        return Response(content=error_twiml, media_type="text/xml")
-
-
-@app.get("/api/health")
+@app.post("/api/health")
 async def health_check():
     """Health check endpoint for monitoring"""
     try:
