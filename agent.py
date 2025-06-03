@@ -336,75 +336,81 @@ async def delete_assistant(assistant_id: str):
     }
 
 
-@app.post("/webhooks/vapi/call-started")
-async def vapi_call_started(request: Request):
+@app.post("/webhooks/vapi")
+async def vapi_webhook_handler(request: Request):
     """
-    Webhook endpoint for Vapi call started events
-    This is called when a call begins
-    """
-    try:
-        data = await request.json()
-        call_id = data.get("call", {}).get("id")
-        phone_number = data.get("call", {}).get("customer", {}).get("number")
-        
-        logger.info(f"Call started - ID: {call_id}, Phone: {phone_number}")
-        
-        return {"success": True}
-        
-    except Exception as e:
-        logger.error(f"Error handling call-started webhook: {str(e)}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-
-@app.post("/webhooks/vapi/call-ended")
-async def vapi_call_ended(request: Request):
-    """
-    Webhook endpoint for Vapi call ended events
-    This is called when a call completes
+    Unified webhook endpoint for all Vapi events.
+    This endpoint receives all webhook events from Vapi and dispatches them
+    to the appropriate handler function based on the 'type' field in the payload.
     """
     try:
         data = await request.json()
-        call_id = data.get("call", {}).get("id")
-        duration = data.get("call", {}).get("duration")
-        end_reason = data.get("call", {}).get("endedReason")
-        
-        logger.info(f"Call ended - ID: {call_id}, Duration: {duration}s, Reason: {end_reason}")
-        
-        # You can add custom logic here like:
-        # - Save call transcript
-        # - Send summary email
-        # - Update database
-        
-        return {"success": True}
-        
-    except Exception as e:
-        logger.error(f"Error handling call-ended webhook: {str(e)}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        event_type = data.get("message", {}).get("type")
+        call_id = data.get("message", {}).get("call", {}).get("id") # Attempt to get call_id for logging
 
+        logger.info(f"Received Vapi webhook event: {event_type}" + (f", Call ID: {call_id}" if call_id else ""))
 
-@app.post("/webhooks/vapi/function-call")
-async def vapi_function_call(request: Request):
-    """
-    Webhook endpoint for Vapi function calls
-    This handles any custom functions your assistant might call
-    """
-    try:
-        data = await request.json()
-        function_name = data.get("functionCall", {}).get("name")
-        parameters = data.get("functionCall", {}).get("parameters")
-        
-        logger.info(f"Function call received - Name: {function_name}, Params: {parameters}")
-        
-        # Handle different function calls here
-        # For now, we'll just acknowledge
-        
-        return {
-            "result": "Function executed successfully"
-        }
-        
+        # Dispatch based on event type
+        if event_type == "function-call":
+            # Assuming you have a function to handle function-call logic
+            # Reuse logic from your existing vapi_function_call function
+            logger.info(f"Handling function-call event for Call ID: {call_id}")
+            function_name = data.get("functionCall", {}).get("name")
+            parameters = data.get("functionCall", {}).get("parameters")
+            logger.info(f"Function call received - Name: {function_name}, Params: {parameters}")
+            # For function calls, you need to return the result or actions for the assistant
+            # For now, return a placeholder success message. Implement your actual function logic here.
+            return {"result": "Function executed successfully"}
+
+        # Add more elif blocks here for other event types you want to handle
+        elif event_type == "conversation-update":
+             logger.info(f"Handling conversation-update event for Call ID: {call_id}")
+             # Process conversation updates
+             return {"success": True, "message": "Conversation update received"}
+
+        elif event_type == "end-of-call-report":
+             logger.info(f"Handling end-of-call-report event for Call ID: {call_id}")
+             # Process end of call report
+             return {"success": True, "message": "End of call report received"}
+
+        elif event_type == "hang":
+             logger.info(f"Handling hang event for Call ID: {call_id}")
+             # Process hang event
+             return {"success": True, "message": "Hang event received"}
+
+        elif event_type == "speech-update":
+             logger.info(f"Handling speech-update event for Call ID: {call_id}")
+             # Process speech update
+             return {"success": True, "message": "Speech update received"}
+
+        elif event_type == "status-update":
+             logger.info(f"Handling status-update event for Call ID: {call_id}")
+             # Process status update
+             return {"success": True, "message": "Status update received"}
+
+        elif event_type == "tool-calls":
+             logger.info(f"Handling tool-calls event for Call ID: {call_id}")
+             # Process tool calls
+             return {"success": True, "message": "Tool calls received"}
+
+        elif event_type == "transfer-destination-request":
+             logger.info(f"Handling transfer-destination-request event for Call ID: {call_id}")
+             # Process transfer destination request
+             return {"success": True, "message": "Transfer destination request received"}
+
+        elif event_type == "user-interrupted":
+             logger.info(f"Handling user-interrupted event for Call ID: {call_id}")
+             # Process user interrupted event
+             return {"success": True, "message": "User interrupted event received"}
+
+        # If the event type is not handled, log a warning and return a success response
+        logger.warning(f"Received unhandled Vapi webhook event type: {event_type}" + (f", Call ID: {call_id}" if call_id else ""))
+        return {"success": True, "message": f"Event type {event_type} received but not handled"}
+
     except Exception as e:
-        logger.error(f"Error handling function-call webhook: {str(e)}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        logger.error(f"Error handling Vapi webhook: {str(e)}")
+        # Return an error response. Vapi might retry failed webhooks.
+        return JSONResponse(status_code=500, content={"error": str(e)}) # Vapi might expect 2xx response even on handler error, verify this.
 
 
 @app.post("/webhooks/twilio/voice")
